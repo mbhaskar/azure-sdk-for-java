@@ -239,19 +239,6 @@ public class OrderbyDocumentQueryTest extends TestSuiteBase {
     }
 
     @Test(groups = { "simple" }, timeOut = TIMEOUT)
-    public void crossPartitionQueryNotEnabled() throws Exception {
-        String query = "SELECT * FROM r ORDER BY r.propInt";
-        FeedOptions options = new FeedOptions();
-        Flux<FeedResponse<CosmosItemProperties>> queryObservable = createdCollection.queryItems(query, options);
-
-        FailureValidator validator = new FailureValidator.Builder()
-                .instanceOf(CosmosClientException.class)
-                .statusCode(400)
-                .build();
-        validateQueryFailure(queryObservable, validator);
-    }
-
-    @Test(groups = { "simple" }, timeOut = TIMEOUT)
     public void queryScopedToSinglePartition_StartWithContinuationToken() throws Exception {
         String query = "SELECT * FROM r ORDER BY r.propScopedPartitionInt ASC";
         FeedOptions options = new FeedOptions();

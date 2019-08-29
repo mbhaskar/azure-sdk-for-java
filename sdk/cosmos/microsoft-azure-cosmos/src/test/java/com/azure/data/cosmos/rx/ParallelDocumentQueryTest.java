@@ -190,11 +190,14 @@ public class ParallelDocumentQueryTest extends TestSuiteBase {
         FeedOptions options = new FeedOptions();
         Flux<FeedResponse<CosmosItemProperties>> queryObservable = createdCollection.queryItems(query, options);
 
-        FailureValidator validator = new FailureValidator.Builder()
-                .instanceOf(CosmosClientException.class)
-                .statusCode(400)
-                .build();
-        validateQueryFailure(queryObservable, validator);
+        List<CosmosItemProperties> expectedDocs = createdDocuments;
+        FeedResponseListValidator<CosmosItemProperties> validator = new FeedResponseListValidator.Builder<CosmosItemProperties>()
+                                                                .totalSize(expectedDocs.size())
+                                                                .exactlyContainsInAnyOrder(expectedDocs.stream().map(d -> d.resourceId()).collect(Collectors.toList()))
+                                                                .allPagesSatisfy(new FeedResponseValidator.Builder<CosmosItemProperties>()
+                                                                                         .requestChargeGreaterThanOrEqualTo(1.0)
+                                                                                         .build())
+                                                                .build();
     }
 
     @Test(groups = { "simple" }, timeOut = 2 * TIMEOUT)

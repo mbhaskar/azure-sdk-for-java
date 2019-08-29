@@ -113,7 +113,9 @@ class RxGatewayStoreModel implements RxStoreModel {
     }
 
     private Flux<RxDocumentServiceResponse> query(RxDocumentServiceRequest request) {
-        request.getHeaders().put(HttpConstants.HttpHeaders.IS_QUERY, "true");
+        if(request.getOperationType() != OperationType.QueryPlan) {
+            request.getHeaders().put(HttpConstants.HttpHeaders.IS_QUERY, "true");
+        }
 
         switch (this.queryCompatibilityMode) {
             case SqlQuery:
@@ -409,6 +411,7 @@ class RxGatewayStoreModel implements RxStoreModel {
                 return this.replace(request);
             case SqlQuery:
             case Query:
+            case QueryPlan:
                 return this.query(request);
             default:
                 throw new IllegalStateException("Unknown operation type " + request.getOperationType());

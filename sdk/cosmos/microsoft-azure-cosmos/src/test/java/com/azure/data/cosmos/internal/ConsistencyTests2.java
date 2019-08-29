@@ -238,6 +238,7 @@ public class ConsistencyTests2 extends ConsistencyTestsBase {
                 try {
                     FeedOptions feedOptions = new FeedOptions();
                     feedOptions.enableCrossPartitionQuery(true);
+                    feedOptions.allowEmptyPages(true);
                     FeedResponse<Document> queryResponse = client.queryDocuments(createdCollection.selfLink(),
                                                                                  "SELECT * FROM c WHERE c.Id = " +
                                                                                          "'foo'", feedOptions)

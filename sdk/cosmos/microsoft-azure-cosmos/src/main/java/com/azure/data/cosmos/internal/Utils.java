@@ -329,7 +329,8 @@ public class Utils {
                 requestOperationType == OperationType.Upsert ||
                 requestOperationType == OperationType.ReadFeed ||
                 requestOperationType == OperationType.Query ||
-                requestOperationType == OperationType.SqlQuery ||
+                requestOperationType == OperationType.SqlQuery || 
+                requestOperationType == OperationType.QueryPlan ||
                 requestOperationType == OperationType.HeadFeed;
     }
 
