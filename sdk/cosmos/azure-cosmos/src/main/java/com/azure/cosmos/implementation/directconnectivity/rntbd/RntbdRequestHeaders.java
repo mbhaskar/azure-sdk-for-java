@@ -114,6 +114,7 @@ final class RntbdRequestHeaders extends RntbdTokenStream<RntbdRequestHeader> {
         this.addSupportSpatialLegacyCoordinates(headers);
         this.addUsePolygonsSmallerThanAHemisphere(headers);
         this.addReturnPreference(headers);
+//        this.addQueryCorrelationActivityId(headers);
 
         // Normal headers (Strings, Ints, Longs, etc.)
 
@@ -155,6 +156,7 @@ final class RntbdRequestHeaders extends RntbdTokenStream<RntbdRequestHeader> {
         this.fillTokenFromHeader(headers, this::isBatchAtomic, HttpHeaders.IS_BATCH_ATOMIC);
         this.fillTokenFromHeader(headers, this::shouldBatchContinueOnError, HttpHeaders.SHOULD_BATCH_CONTINUE_ON_ERROR);
         this.fillTokenFromHeader(headers, this::isBatchOrdered, HttpHeaders.IS_BATCH_ORDERED);
+        this.fillTokenFromHeader(headers, this::getQueryCorrelationActivityId, HttpHeaders.CORRELATED_ACTIVITY_ID);
 
         // Will be null in case of direct, which is fine - BE will use the value slice the connection context this.
         // When this is used in Gateway, the header value will be populated with the proxied HTTP request's header,
@@ -418,6 +420,10 @@ final class RntbdRequestHeaders extends RntbdTokenStream<RntbdRequestHeader> {
 
     private RntbdToken getPopulateQueryMetrics() {
         return this.get(RntbdRequestHeader.PopulateQueryMetrics);
+    }
+
+    private RntbdToken getQueryCorrelationActivityId() {
+        return this.get(RntbdRequestHeader.CorrelationActivityId);
     }
 
     private RntbdToken getPopulateQuotaInfo() {
@@ -963,6 +969,13 @@ final class RntbdRequestHeaders extends RntbdTokenStream<RntbdRequestHeader> {
         final String value = headers.get(HttpHeaders.POPULATE_QUERY_METRICS);
         if (StringUtils.isNotEmpty(value)) {
             this.getPopulateQueryMetrics().setValue(Boolean.parseBoolean(value));
+        }
+    }
+
+    private void addQueryCorrelationActivityId(final Map<String, String> headers) {
+        final String value = headers.get(HttpHeaders.CORRELATED_ACTIVITY_ID);
+        if (StringUtils.isNotEmpty(value)) {
+            this.getQueryCorrelationActivityId().setValue(value);
         }
     }
 

@@ -581,7 +581,8 @@ public final class RntbdConstants {
         IsBatchAtomic((short) 0x0073, RntbdTokenType.Byte, false),
         ShouldBatchContinueOnError((short) 0x0074, RntbdTokenType.Byte, false),
         IsBatchOrdered((short) 0x0075, RntbdTokenType.Byte, false),
-        ReturnPreference((short) 0x0082, RntbdTokenType.Byte, false);
+        ReturnPreference((short) 0x0082, RntbdTokenType.Byte, false),
+        CorrelationActivityId((short) 0x0083, RntbdTokenType.Guid, false);
 
         public static final ImmutableMap<Short, RntbdRequestHeader> map;
         public static final ImmutableSet<RntbdRequestHeader> set = Sets.immutableEnumSet(EnumSet.allOf(RntbdRequestHeader.class));
