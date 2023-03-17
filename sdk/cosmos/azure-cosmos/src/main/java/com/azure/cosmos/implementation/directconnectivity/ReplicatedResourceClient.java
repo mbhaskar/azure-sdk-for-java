@@ -5,24 +5,17 @@ package com.azure.cosmos.implementation.directconnectivity;
 
 import com.azure.cosmos.ConsistencyLevel;
 import com.azure.cosmos.CosmosContainerProactiveInitConfig;
-import com.azure.cosmos.implementation.BackoffRetryUtility;
-import com.azure.cosmos.implementation.Configs;
-import com.azure.cosmos.implementation.DiagnosticsClientContext;
-import com.azure.cosmos.implementation.HttpConstants;
-import com.azure.cosmos.implementation.IAuthorizationTokenProvider;
-import com.azure.cosmos.implementation.ISessionContainer;
-import com.azure.cosmos.implementation.OpenConnectionResponse;
-import com.azure.cosmos.implementation.OperationType;
-import com.azure.cosmos.implementation.Quadruple;
-import com.azure.cosmos.implementation.ReplicatedResourceClientUtils;
-import com.azure.cosmos.implementation.ResourceType;
-import com.azure.cosmos.implementation.RxDocumentServiceRequest;
+import com.azure.cosmos.implementation.*;
+import com.azure.cosmos.implementation.directconnectivity.thompsonsampling.ThomsonSampling;
 import com.azure.cosmos.implementation.faultinjection.IFaultInjectorProvider;
+import com.azure.cosmos.implementation.OpenConnectionResponse;
 import com.azure.cosmos.implementation.throughputControl.ThroughputControlStore;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import reactor.core.publisher.Flux;
 import reactor.core.publisher.Mono;
+import reactor.core.scheduler.Scheduler;
+import reactor.core.scheduler.Schedulers;
 
 import java.time.Duration;
 import java.util.function.BiFunction;
@@ -47,17 +40,19 @@ public class ReplicatedResourceClient {
     private final boolean enableReadRequestsFallback;
     private final GatewayServiceConfigurationReader serviceConfigReader;
     private final Configs configs;
+    private final ThomsonSampling thomsonSampling;
+    private final GlobalEndpointManager globalEndpointManager;
 
     public ReplicatedResourceClient(
-            DiagnosticsClientContext diagnosticsClientContext,
-            Configs configs,
-            AddressSelector addressSelector,
-            ISessionContainer sessionContainer,
-            TransportClient transportClient,
-            GatewayServiceConfigurationReader serviceConfigReader,
-            IAuthorizationTokenProvider authorizationTokenProvider,
-            boolean enableReadRequestsFallback,
-            boolean useMultipleWriteLocations) {
+        DiagnosticsClientContext diagnosticsClientContext,
+        Configs configs,
+        AddressSelector addressSelector,
+        ISessionContainer sessionContainer,
+        TransportClient transportClient,
+        GatewayServiceConfigurationReader serviceConfigReader,
+        IAuthorizationTokenProvider authorizationTokenProvider,
+        boolean enableReadRequestsFallback,
+        boolean useMultipleWriteLocations, GlobalEndpointManager globalEndpointManager) {
         this.diagnosticsClientContext = diagnosticsClientContext;
         this.configs = configs;
         this.protocol = configs.getProtocol();
@@ -84,6 +79,8 @@ public class ReplicatedResourceClient {
             serviceConfigReader,
             useMultipleWriteLocations);
         this.enableReadRequestsFallback = enableReadRequestsFallback;
+        this.globalEndpointManager = globalEndpointManager;
+        this.thomsonSampling = new ThomsonSampling(this.globalEndpointManager.getReadEndpoints().size(), 10);
     }
 
     public void enableThroughputControl(ThroughputControlStore throughputControlStore) {
@@ -111,10 +108,29 @@ public class ReplicatedResourceClient {
                     forceRefreshAndTimeout.getValue3().toString());
             documentServiceRequest.getHeaders().put(HttpConstants.HttpHeaders.REMAINING_TIME_IN_MS_ON_CLIENT_REQUEST,
                     Long.toString(forceRefreshAndTimeout.getValue2().toMillis()));
-            return invokeAsync(request, new TimeoutHelper(forceRefreshAndTimeout.getValue2()),
-                        forceRefreshAndTimeout.getValue1(), forceRefreshAndTimeout.getValue0());
 
+
+            if (request.requestContext.getEndToEndOperationLatencyPolicyConfig() != null) {
+                // Based on region recommended, do a request.context.routeToLocation()
+                int regionIndex = thomsonSampling.getArm();
+                int toExplore = thomsonSampling.shouldExplore();
+//            String regionName = this.globalEndpointManager.getRegionName(this.globalEndpointManager.getReadEndpoints().get(regionIndex), OperationType.Read);
+                request.requestContext.routeToLocation(this.globalEndpointManager.getReadEndpoints().get(regionIndex));
+//            System.out.println("forceRefreshAndTimeout.getValue3() = " + forceRefreshAndTimeout.getValue3());
+
+                if (toExplore >= 0) {
+                    // make another parallel request to explore
+                    System.out.println("Exploring..");
+                    request.requestContext.routeToLocation(this.globalEndpointManager.getReadEndpoints().get(regionIndex));
+                    if (toExplore > 1) toExplore = 1;
+                    getStoreResponseMono(request, forceRefreshAndTimeout, toExplore, true).subscribeOn(Schedulers.boundedElastic());
+                }
+
+                return getStoreResponseMono(request, forceRefreshAndTimeout, regionIndex, false);
+            }
+            return getStoreResponseMono(request, forceRefreshAndTimeout);
         };
+
         Function<Quadruple<Boolean, Boolean, Duration, Integer>, Mono<StoreResponse>> funcDelegate = (
                 Quadruple<Boolean, Boolean, Duration, Integer> forceRefreshAndTimeout) -> {
             if (prepareRequestAsyncDelegate != null) {
@@ -170,6 +186,35 @@ public class ReplicatedResourceClient {
                 ReplicatedResourceClient.MIN_BACKOFF_FOR_FAILLING_BACK_TO_OTHER_REGIONS_FOR_READ_REQUESTS_IN_SECONDS),
             request,
             addressSelector);
+    }
+
+    private Mono<StoreResponse> getStoreResponseMono(RxDocumentServiceRequest request, Quadruple<Boolean, Boolean, Duration, Integer> forceRefreshAndTimeout, int regionIndex, boolean isExploration) {
+        return invokeAsync(request, new TimeoutHelper(forceRefreshAndTimeout.getValue2()),
+            forceRefreshAndTimeout.getValue1(), forceRefreshAndTimeout.getValue0())
+            .map(storeResponse -> {
+                Duration timeTaken = request.requestContext.cosmosDiagnostics.getDuration();
+                assert timeTaken != null;
+                //TODO: Keep the size of the document in mind to compute the transit time
+                if (!isExploration) {
+                    System.out.println("Request duration in ms: [" + timeTaken.toMillis() + " " + "] Region : " + request.requestContext.locationEndpointToRoute);
+                } else {
+                    System.out.println("\t##Exploration##:Request duration in ms: " + timeTaken.toMillis() + " " + " Region : " + request.requestContext.locationEndpointToRoute);
+                }
+                thomsonSampling.updateReward(regionIndex, timeTaken.toMillis());
+                return storeResponse;
+            });
+    }
+
+    private Mono<StoreResponse> getStoreResponseMono(RxDocumentServiceRequest request, Quadruple<Boolean, Boolean, Duration, Integer> forceRefreshAndTimeout) {
+        return invokeAsync(request, new TimeoutHelper(forceRefreshAndTimeout.getValue2()),
+            forceRefreshAndTimeout.getValue1(), forceRefreshAndTimeout.getValue0())
+            .map(storeResponse -> {
+                Duration timeTaken = request.requestContext.cosmosDiagnostics.getDuration();
+                assert timeTaken != null;
+
+                System.out.println("Request duration in ms: " + timeTaken.toMillis() + " " + " Region : " + request.requestContext.locationEndpointToRoute);
+                return storeResponse;
+            });
     }
 
     private Mono<StoreResponse> invokeAsync(RxDocumentServiceRequest request, TimeoutHelper timeout,

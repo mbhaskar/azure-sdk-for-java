@@ -626,7 +626,7 @@ public class StoreReaderDotNetTest {
         Mockito.when(mockServiceConfigReader.getUserReplicationPolicy()).thenReturn(replicationPolicy);
 
         try {
-            StoreClient storeClient = new StoreClient(mockDiagnosticsClientContext(), new Configs(),mockAddressCache, sessionContainer, mockServiceConfigReader, mockAuthorizationTokenProvider, mockTransportClient, false);
+            StoreClient storeClient = new StoreClient(mockDiagnosticsClientContext(), new Configs(),mockAddressCache, sessionContainer, mockServiceConfigReader, mockAuthorizationTokenProvider, mockTransportClient, false, null);
 
             ServerStoreModel storeModel = new ServerStoreModel(storeClient);
             Mono<RxDocumentServiceResponse> result = storeModel.processMessage(entity).single();

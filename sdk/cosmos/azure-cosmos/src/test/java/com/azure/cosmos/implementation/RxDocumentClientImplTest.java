@@ -208,8 +208,8 @@ public class RxDocumentClientImplTest {
             this.metadataCachesSnapshotMock,
             this.apiTypeMock,
             this.cosmosClientTelemetryConfigMock,
-            this.clientCorrelationIdMock
-        );
+            this.clientCorrelationIdMock,
+                null);
 
         ReflectionUtils.setCollectionCache(rxDocumentClient, this.collectionCacheMock);
         ReflectionUtils.setPartitionKeyRangeCache(rxDocumentClient, this.partitionKeyRangeCacheMock);
